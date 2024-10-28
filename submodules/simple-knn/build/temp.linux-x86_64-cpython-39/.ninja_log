@@ -1,0 +1,4 @@
+# ninja log v5
+0	15225	1726800572	/home/baihy/xuhy/CityGaussian/submodules/simple-knn/build/temp.linux-x86_64-cpython-39/simple_knn.o	944e6fabaa76d55d
+0	22654	1726800579	/home/baihy/xuhy/CityGaussian/submodules/simple-knn/build/temp.linux-x86_64-cpython-39/ext.o	96b8b2762155f4ef
+1	69835	1726800626	/home/baihy/xuhy/CityGaussian/submodules/simple-knn/build/temp.linux-x86_64-cpython-39/spatial.o	e2c8170d13c963f7

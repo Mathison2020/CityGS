@@ -1,0 +1,27 @@
+Merged 1202891 points from block 0 from iteration 30000.
+Merged 1994077 points from block 1 from iteration 30000.
+Merged 1910555 points from block 2 from iteration 30000.
+Merged 1582149 points from block 3 from iteration 30000.
+Merged 23 points from block 4 from iteration 30000.
+Merged 1286101 points from block 5 from iteration 30000.
+Merged 955651 points from block 6 from iteration 30000.
+Merged 1201832 points from block 7 from iteration 30000.
+Merged 1414943 points from block 8 from iteration 30000.
+Merged 22408 points from block 9 from iteration 30000.
+Merged 1299243 points from block 10 from iteration 30000.
+Merged 1017687 points from block 11 from iteration 30000.
+Merged 1115163 points from block 12 from iteration 30000.
+Merged 1088765 points from block 13 from iteration 30000.
+Merged 91459 points from block 14 from iteration 30000.
+Merged 881988 points from block 15 from iteration 30000.
+Merged 1113249 points from block 16 from iteration 30000.
+Merged 959715 points from block 17 from iteration 30000.
+Merged 921666 points from block 18 from iteration 30000.
+Merged 32971 points from block 19 from iteration 30000.
+Merged 3 points from block 20 from iteration 30000.
+Merged 1 points from block 21 from iteration 30000.
+Merged 2 points from block 22 from iteration 30000.
+Merged 0 points from block 23 from iteration 30000.
+Merged 0 points from block 24 from iteration 30000.
+Saving merged 20092542 point cloud to output/sjk_luoshe_refine/point_cloud/iteration_30000/point_cloud.ply
+Done

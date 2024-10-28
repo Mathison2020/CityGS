@@ -1,0 +1,6 @@
+# ninja log v5
+1	8920	1726800489	/home/baihy/xuhy/CityGaussian/submodules/diff-gaussian-rasterization/build/temp.linux-x86_64-cpython-39/cuda_rasterizer/forward.o	66bb59f7128d6d60
+0	8921	1726800489	/home/baihy/xuhy/CityGaussian/submodules/diff-gaussian-rasterization/build/temp.linux-x86_64-cpython-39/cuda_rasterizer/backward.o	a0cc590cba6cc4c7
+2	17047	1726800497	/home/baihy/xuhy/CityGaussian/submodules/diff-gaussian-rasterization/build/temp.linux-x86_64-cpython-39/cuda_rasterizer/rasterizer_impl.o	1bb07bf4484eea5e
+2	27355	1726800507	/home/baihy/xuhy/CityGaussian/submodules/diff-gaussian-rasterization/build/temp.linux-x86_64-cpython-39/ext.o	4cbc1020b97e5c05
+3	72625	1726800552	/home/baihy/xuhy/CityGaussian/submodules/diff-gaussian-rasterization/build/temp.linux-x86_64-cpython-39/rasterize_points.o	77e464245eff6b96
