@@ -34,7 +34,7 @@ from torch.utils.data import DataLoader
 from argparse import ArgumentParser, Namespace
 from arguments import GroupParams
 
-def training(dataset, opt, pipe, testing_iterations, saving_iterations, refilter_iterations, checkpoint_iterations, checkpoint, debug_from):
+def training(dataset, opt, pipe, testing_iterations, saving_iterations, refilter_iterations, checkpoint_iterations, checkpoint, debug_from, use_depth_loss):
     first_iter = 0
     log_writer, image_logger = prepare_output_and_logger(dataset)
 
@@ -71,7 +71,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, refilter
             scene.save(iteration, dataset)
             break    
         
-        for dataset_index, (cam_info, gt_image, gt_depth) in enumerate(data_loader):    
+        for dataset_index, data in enumerate(data_loader):
+            if len(data) == 2:
+                cam_info, gt_image = data
+            else:
+                cam_info, gt_image, gt_depth = data  
             if network_gui.conn == None:
                 network_gui.try_connect()
             while network_gui.conn != None:
@@ -108,20 +112,22 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, refilter
             # Loss
             start = time.time()
             gt_image = gt_image.cuda()
-            gt_depth = gt_depth.cuda()
 
             Ll1 = l1_loss(image, gt_image)
             loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
 
-            rendered_depth = render_pkg["depth"][0]
-            rendered_depth = rendered_depth.reshape(-1, 1)
-            gt_depth = gt_depth.reshape(-1, 1)
+            # depth_loss
+            if use_depth_loss:     
+                gt_depth = gt_depth.cuda()
+                rendered_depth = render_pkg["depth"][0]
+                rendered_depth = rendered_depth.reshape(-1, 1)
+                gt_depth = gt_depth.reshape(-1, 1)
 
-            depth_loss = min(
-                (1 - pearson_corrcoef( - gt_depth, rendered_depth)),
-                (1 - pearson_corrcoef(1 / (gt_depth + 200.), rendered_depth))
-            )
-            loss += opt.lambda_depth * depth_loss
+                depth_loss = min(
+                    (1 - pearson_corrcoef( - gt_depth, rendered_depth)),
+                    (1 - pearson_corrcoef(1 / (gt_depth + 200.), rendered_depth))
+                )
+                loss += opt.lambda_depth * depth_loss
 
 
             loss.backward()
@@ -308,6 +314,7 @@ if __name__ == "__main__":
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
+    parser.add_argument("--use_depth_loss", action="store_true")
     args = parser.parse_args(sys.argv[1:])
     with open(args.config) as f:
         cfg = yaml.load(f, Loader=yaml.FullLoader)
@@ -322,7 +329,7 @@ if __name__ == "__main__":
     # Start GUI server, configure and run training
     network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
-    training(lp, op, pp, args.test_iterations, args.save_iterations, args.refilter_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from)
+    training(lp, op, pp, args.test_iterations, args.save_iterations, args.refilter_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args.use_depth_loss)
 
     # All done
     print("\nTraining complete.")

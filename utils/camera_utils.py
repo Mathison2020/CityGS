@@ -40,10 +40,13 @@ def loadCam(args, id, cam_info, resolution_scale):
         resolution = (int(orig_w / scale), int(orig_h / scale))
 
     resized_image_rgb = PILtoTorch(cam_info.image, resolution)
-    resized_depth = PILtoTorch(cam_info.depth, resolution)
-
     gt_image = resized_image_rgb[:3, ...]
-    gt_depth = resized_depth[:1, ...]
+
+    if cam_info.depth is not None:
+        resized_depth = PILtoTorch(cam_info.depth, resolution)
+        gt_depth = resized_depth[:1, ...]
+    else:
+        gt_depth = None
 
     loaded_mask = None
 

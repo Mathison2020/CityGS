@@ -11,7 +11,7 @@ model_params: {
     model_path: "",  # leave it blank
     images: "images",
     block_dim: [5, 5, 1],  # replace $X, $Y, $Z with your block dimension along x, y, z axis
-  #  aabb: [-1.5, -1, -30, 3.6, 5.0, 1],  # Uncomment this line if you want to appoint your own aabb definition
+    aabb: [-1.5, -1, -30, 3.6, 5.0, 1],  # Uncomment this line if you want to appoint your own aabb definition
     resolution: -1,  # adjust it to your downsample factor. -1 means downsampling longest side of image to 1,600 pixels
     white_background: False,
     data_device: "cuda",

@@ -29,7 +29,6 @@ port=4041
 #     --config config/$CONFIG.yaml > part_log1.txt
 
 
-
 # optimize each block, please adjust block number according to config
 
 # left_lists="1 2 3 4 5"
@@ -45,10 +44,10 @@ for num in $(seq 0 $max_block_id); do
             # Increment the port number for the next run
             ((port++))
             # Allow some time for the process to initialize and potentially use GPU memory
-            sleep 30
+            sleep 120
             break
         else
-            echo "No GPU available at the moment. Retrying in 2 minute."
+            echo "No GPU available at the moment. Retrying in 1 minute."
             sleep 60
         fi
     done
