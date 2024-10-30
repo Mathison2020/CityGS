@@ -13,6 +13,7 @@ model_params: {
     white_background: False,
     data_device: "cpu",
     eval: False,
+    apply_mask: False,
 }
 
 # Pipeline Parameters

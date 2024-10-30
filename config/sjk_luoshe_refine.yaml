@@ -17,6 +17,7 @@ model_params: {
     white_background: False,
     data_device: "cuda",
     eval: False,
+    apply_mask: True,
 }
 
 # Pipeline Parameters

@@ -55,17 +55,20 @@ def loadCam(args, id, cam_info, resolution_scale):
     if resized_image_rgb.shape[1] == 4:
         loaded_mask = resized_image_rgb[3:4, ...]
 
-    if cam_info.mask_path is not None:
-        mask = Image.open(cam_info.mask_path)
-        mask_rgb = mask.convert('RGB')
-        resized_mask = PILtoTorch(mask_rgb, resolution)
-        gt_mask = resized_mask[:3, ...]
-        mask.close()
+    if cam_info.apply_mask:
+        if cam_info.mask_path is not None:
+            mask = Image.open(cam_info.mask_path)
+            mask_rgb = mask.convert('RGB')
+            resized_mask = PILtoTorch(mask_rgb, resolution)
+            gt_mask = resized_mask[:3, ...]
+            mask.close()
+        else:
+            gt_mask = torch.ones(3, *resolution, dtype=torch.float32)
     else:
-        gt_mask = torch.ones(3, *resolution, dtype=torch.float32)
+        gt_mask = None
 
     return Camera(colmap_id=cam_info.uid, R=cam_info.R, T=cam_info.T, 
-                  FoVx=cam_info.FovX, FoVy=cam_info.FovY, mask=gt_mask,
+                  FoVx=cam_info.FovX, FoVy=cam_info.FovY, mask=gt_mask, apply_mask=cam_info.apply_mask,
                   image=gt_image, depth=gt_depth, gt_alpha_mask=loaded_mask,
                   image_name=cam_info.image_name, uid=id, data_device=args.data_device)
 

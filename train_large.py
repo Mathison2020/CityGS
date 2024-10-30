@@ -110,12 +110,17 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, refilter
             ema_time_render = 0.4 * (end - start) + 0.6 * ema_time_render
 
             # Loss
-            start = time.time()
-            gt_image = gt_image.cuda()
-
-            mask = abs(1 - mask.cuda())      
-            Ll1 = l1_loss(image*mask, gt_image*mask)
-            loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image*mask, gt_image*mask))
+            if cam_info['apply_mask']:
+                start = time.time()
+                gt_image = gt_image.cuda()
+                mask = abs(1 - mask.cuda())      
+                Ll1 = l1_loss(image*mask, gt_image*mask)
+                loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image*mask, gt_image*mask))
+            else:
+                start = time.time()
+                gt_image = gt_image.cuda()   
+                Ll1 = l1_loss(image, gt_image)
+                loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
 
             # depth_loss
             if use_depth_loss:     
@@ -130,7 +135,6 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, refilter
                 )
                 loss += opt.lambda_depth * depth_loss
 
-
             loss.backward()
             end = time.time()
             ema_time_loss = 0.4 * (end - start) + 0.6 * ema_time_loss
@@ -138,7 +142,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, refilter
             iter_end.record()
             '''
             if iteration % 1000 == 0:
-                lookup = os.path.join(dataset.model_path, 'vis')
+                #lookup = os.path.join(dataset.model_path, 'vis')
+                lookup = '/home/baihy/cyn/CityGS/output/vis'
                 os.makedirs(lookup, exist_ok=True)
                 torchvision.utils.save_image(torch.cat([image, gt_image, mask], -1), os.path.join(lookup, f'{iteration:05d}.png'))
             '''
