@@ -36,8 +36,9 @@ class GSDataset(Dataset):
             "full_proj_transform": viewpoint_cam.full_proj_transform,
         }
         y = viewpoint_cam.original_image
+        z = viewpoint_cam.mask
         
-        return x, y
+        return x, y, z 
 
 class CacheDataLoader(torch.utils.data.DataLoader):
     def __init__(

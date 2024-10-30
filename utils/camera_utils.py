@@ -14,6 +14,8 @@ import numpy as np
 from utils.general_utils import PILtoTorch
 from utils.graphics_utils import fov2focal
 from transforms3d.euler import euler2mat, mat2euler
+from PIL import Image
+import torch
 
 WARNED = False
 
@@ -53,8 +55,17 @@ def loadCam(args, id, cam_info, resolution_scale):
     if resized_image_rgb.shape[1] == 4:
         loaded_mask = resized_image_rgb[3:4, ...]
 
+    if cam_info.mask_path is not None:
+        mask = Image.open(cam_info.mask_path)
+        mask_rgb = mask.convert('RGB')
+        resized_mask = PILtoTorch(mask_rgb, resolution)
+        gt_mask = resized_mask[:3, ...]
+        mask.close()
+    else:
+        gt_mask = torch.ones(3, *resolution, dtype=torch.float32)
+
     return Camera(colmap_id=cam_info.uid, R=cam_info.R, T=cam_info.T, 
-                  FoVx=cam_info.FovX, FoVy=cam_info.FovY, 
+                  FoVx=cam_info.FovX, FoVy=cam_info.FovY, mask=gt_mask,
                   image=gt_image, depth=gt_depth, gt_alpha_mask=loaded_mask,
                   image_name=cam_info.image_name, uid=id, data_device=args.data_device)
 

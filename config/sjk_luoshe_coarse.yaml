@@ -8,6 +8,7 @@ model_params: {
     source_path: "data/luoshedaqiao_forward",  # adjust it to your own dataset
     model_path: "",  # leave it blank
     images: "images",
+    transient: "masks", # Directory name of masks
     resolution: -1,  # adjust it to your downsample factor. -1 means downsampling longest side of image to 1,600 pixels
     white_background: False,
     data_device: "cpu",
