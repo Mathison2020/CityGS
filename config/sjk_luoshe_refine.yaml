@@ -18,6 +18,7 @@ model_params: {
     data_device: "cuda",
     eval: False,
     apply_mask: True,
+    apply_apperance_decouple: True,
 }
 
 # Pipeline Parameters
@@ -47,7 +48,10 @@ optim_params: {
     opacity_reset_interval: 5000,
     densify_from_iter: 2000,
     densify_until_iter: 15_000,
-    densify_grad_threshold: 0.0002
+    densify_grad_threshold: 0.0002,
+    # Appearance Decouple
+    appearance_embeddings_lr: 0.001,  # AE的学习率
+    appearance_network_lr: 0.001,     # 外观解耦网络的学习率
 }
 
 

@@ -35,6 +35,7 @@ class GSDataset(Dataset):
             "world_view_transform": viewpoint_cam.world_view_transform,
             "full_proj_transform": viewpoint_cam.full_proj_transform,
             "apply_mask":viewpoint_cam.apply_mask,
+            "uid":viewpoint_cam.uid,
         }
         y = viewpoint_cam.original_image
         z = viewpoint_cam.mask

@@ -33,22 +33,25 @@ from utils.log_utils import tensorboard_log_image, wandb_log_image
 from torch.utils.data import DataLoader
 from argparse import ArgumentParser, Namespace
 from arguments import GroupParams
+from scene.appearance_network import decouple_appearance
 
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, refilter_iterations, checkpoint_iterations, checkpoint, debug_from, use_depth_loss):
     first_iter = 0
     log_writer, image_logger = prepare_output_and_logger(dataset)
-
+    
     modules = __import__('scene')
     model_config = dataset.model_config
+    apply_apperance_decouple = dataset.apply_apperance_decouple
+    apply_mask = dataset.apply_mask
     gaussians = getattr(modules, model_config['name'])(dataset.sh_degree, **model_config['kwargs'])
     scene = LargeScene(dataset, gaussians)
     gs_dataset = GSDataset(scene.getTrainCameras(), scene, dataset, pipe)
     if len(gs_dataset) > 0:
         data_loader = CacheDataLoader(gs_dataset, max_cache_num=1024, seed=42, batch_size=1, shuffle=True, num_workers=8)
-    gaussians.training_setup(opt)
+    gaussians.training_setup(opt,apply_apperance_decouple)
     if checkpoint:
         (model_params, first_iter) = torch.load(checkpoint)
-        gaussians.restore(model_params, opt)
+        gaussians.restore(model_params, opt, apply_apperance_decouple)
 
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
@@ -109,18 +112,34 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, refilter
             end = time.time()
             ema_time_render = 0.4 * (end - start) + 0.6 * ema_time_render
 
-            # Loss
-            if cam_info['apply_mask']:
-                start = time.time()
-                gt_image = gt_image.cuda()
-                mask = abs(1 - mask.cuda())      
-                Ll1 = l1_loss(image*mask, gt_image*mask)
-                loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image*mask, gt_image*mask))
+            # decouple appearance model
+            if(apply_apperance_decouple):
+                decouple_image, transformation_map = decouple_appearance(image, gaussians, cam_info['uid'])
+                # Loss
+                if apply_mask:
+                    start = time.time()
+                    gt_image = gt_image.cuda()
+                    mask = abs(1 - mask.cuda())      
+                    Ll1 = l1_loss(decouple_image*mask, gt_image*mask)
+                    loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image*mask, gt_image*mask))
+                else:
+                    start = time.time()
+                    gt_image = gt_image.cuda()   
+                    Ll1 = l1_loss(decouple_image, gt_image)
+                    loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
             else:
-                start = time.time()
-                gt_image = gt_image.cuda()   
-                Ll1 = l1_loss(image, gt_image)
-                loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
+                # Loss
+                if apply_mask:
+                    start = time.time()
+                    gt_image = gt_image.cuda()
+                    mask = abs(1 - mask.cuda())      
+                    Ll1 = l1_loss(image*mask, gt_image*mask)
+                    loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image*mask, gt_image*mask))
+                else:
+                    start = time.time()
+                    gt_image = gt_image.cuda()   
+                    Ll1 = l1_loss(image, gt_image)
+                    loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
 
             # depth_loss
             if use_depth_loss:     
@@ -140,12 +159,20 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, refilter
             ema_time_loss = 0.4 * (end - start) + 0.6 * ema_time_loss
 
             iter_end.record()
-            '''
+            ''' 
+            #visualize masks
             if iteration % 1000 == 0:
-                #lookup = os.path.join(dataset.model_path, 'vis')
-                lookup = '/home/baihy/cyn/CityGS/output/vis'
-                os.makedirs(lookup, exist_ok=True)
-                torchvision.utils.save_image(torch.cat([image, gt_image, mask], -1), os.path.join(lookup, f'{iteration:05d}.png'))
+                if not apply_apperance_decouple:
+                    #lookup = os.path.join(dataset.model_path, 'vis')
+                    lookup = '/home/baihy/cyn/CityGS/output/vis'
+                    os.makedirs(lookup, exist_ok=True)
+                    torchvision.utils.save_image(torch.cat([image, gt_image, mask], -1), os.path.join(lookup, f'{iteration:05d}.png'))
+                else:
+                    decouple_image, transformation_map = decouple_appearance(image, gaussians, viewpoint_cam.uid)
+                    #lookup = os.path.join(dataset.model_path, 'vis')
+                    lookup = '/home/baihy/cyn/CityGS/output/vis'
+                    os.makedirs(lookup, exist_ok=True)
+                    torchvision.utils.save_image(torch.cat([image, decouple_image, gt_image], -1), os.path.join(lookup, f'{iteration:05d}.png'))
             '''
             with torch.no_grad():
                 # Progress bar

@@ -23,6 +23,7 @@ from utils.large_utils import block_filtering
 from utils.graphics_utils import BasicPointCloud
 from utils.general_utils import strip_symmetric, build_scaling_rotation, build_symmetric
 from utils.vq_utils import load_vqgaussian
+from scene.appearance_network import AppearanceNetwork
 
 class GatheredGaussian(NamedTuple):
     gs_xyz: torch.Tensor
@@ -71,6 +72,12 @@ class GaussianModel:
         self.spatial_lr_scale = 0
         self.setup_functions()
 
+        # appearance network and appearance embedding
+        self.appearance_network = AppearanceNetwork(3 + 64, 3).to("cuda")
+        std = 1e-4
+        self._appearance_embeddings = nn.Parameter(torch.empty(2048, 64).to("cuda"))
+        self._appearance_embeddings.data.normal_(0, std)
+
     def capture(self):
         return (
             self.active_sh_degree,
@@ -87,7 +94,7 @@ class GaussianModel:
             self.spatial_lr_scale,
         )
     
-    def restore(self, model_args, training_args):
+    def restore(self, model_args, training_args, apply_apperance_decouple):
         (self.active_sh_degree, 
         self._xyz, 
         self._features_dc, 
@@ -100,7 +107,7 @@ class GaussianModel:
         denom,
         opt_dict, 
         self.spatial_lr_scale) = model_args
-        self.training_setup(training_args)
+        self.training_setup(training_args, apply_apperance_decouple)
         self.xyz_gradient_accum = xyz_gradient_accum
         self.denom = denom
         self.optimizer.load_state_dict(opt_dict)
@@ -126,6 +133,10 @@ class GaussianModel:
     @property
     def get_opacity(self):
         return self.opacity_activation(self._opacity)
+    
+    def get_apperance_embedding(self, idx):
+        return self._appearance_embeddings[idx]
+    
     
     def get_covariance(self, scaling_modifier = 1):
         return self.covariance_activation(self.get_scaling, scaling_modifier, self._rotation)
@@ -159,19 +170,30 @@ class GaussianModel:
         self._opacity = nn.Parameter(opacities.requires_grad_(True))
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
 
-    def training_setup(self, training_args):
+    def training_setup(self, training_args,apply_apperance_decouple):
         self.percent_dense = training_args.percent_dense
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
-
-        l = [
-            {'params': [self._xyz], 'lr': training_args.position_lr_init * self.spatial_lr_scale, "name": "xyz"},
-            {'params': [self._features_dc], 'lr': training_args.feature_lr, "name": "f_dc"},
-            {'params': [self._features_rest], 'lr': training_args.feature_lr / 20.0, "name": "f_rest"},
-            {'params': [self._opacity], 'lr': training_args.opacity_lr, "name": "opacity"},
-            {'params': [self._scaling], 'lr': training_args.scaling_lr, "name": "scaling"},
-            {'params': [self._rotation], 'lr': training_args.rotation_lr, "name": "rotation"}
-        ]
+        if(apply_apperance_decouple):
+            l = [
+                {'params': [self._xyz], 'lr': training_args.position_lr_init * self.spatial_lr_scale, "name": "xyz"},
+                {'params': [self._features_dc], 'lr': training_args.feature_lr, "name": "f_dc"},
+                {'params': [self._features_rest], 'lr': training_args.feature_lr / 20.0, "name": "f_rest"},
+                {'params': [self._opacity], 'lr': training_args.opacity_lr, "name": "opacity"},
+                {'params': [self._scaling], 'lr': training_args.scaling_lr, "name": "scaling"},
+                {'params': [self._rotation], 'lr': training_args.rotation_lr, "name": "rotation"},
+                {'params': [self._appearance_embeddings], 'lr': training_args.appearance_embeddings_lr, "name": "appearance_embeddings"},
+                {'params': self.appearance_network.parameters(), 'lr': training_args.appearance_network_lr, "name": "appearance_network"}
+            ]
+        else:
+            l = [
+                {'params': [self._xyz], 'lr': training_args.position_lr_init * self.spatial_lr_scale, "name": "xyz"},
+                {'params': [self._features_dc], 'lr': training_args.feature_lr, "name": "f_dc"},
+                {'params': [self._features_rest], 'lr': training_args.feature_lr / 20.0, "name": "f_rest"},
+                {'params': [self._opacity], 'lr': training_args.opacity_lr, "name": "opacity"},
+                {'params': [self._scaling], 'lr': training_args.scaling_lr, "name": "scaling"},
+                {'params': [self._rotation], 'lr': training_args.rotation_lr, "name": "rotation"}
+            ]
 
         self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
         self.xyz_scheduler_args = get_expon_lr_func(lr_init=training_args.position_lr_init*self.spatial_lr_scale,
@@ -272,6 +294,8 @@ class GaussianModel:
     def replace_tensor_to_optimizer(self, tensor, name):
         optimizable_tensors = {}
         for group in self.optimizer.param_groups:
+            if group["name"] in ["appearance_embeddings", "appearance_network"]:
+                continue
             if group["name"] == name:
                 stored_state = self.optimizer.state.get(group['params'][0], None)
                 stored_state["exp_avg"] = torch.zeros_like(tensor)
@@ -287,6 +311,8 @@ class GaussianModel:
     def _prune_optimizer(self, mask):
         optimizable_tensors = {}
         for group in self.optimizer.param_groups:
+            if group["name"] in ["appearance_embeddings", "appearance_network"]:
+                continue
             stored_state = self.optimizer.state.get(group['params'][0], None)
             if stored_state is not None:
                 stored_state["exp_avg"] = stored_state["exp_avg"][mask]
@@ -522,20 +548,32 @@ class GaussianModelLOD(GaussianModel):
         self._opacity = nn.Parameter(opacities.requires_grad_(True))
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device=self.device)
 
-    def training_setup(self, training_args):
+    def training_setup(self, training_args, apply_apperance_decouple):
         self.percent_dense = training_args.percent_dense
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device=self.device)
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device=self.device)
 
-        l = [
-            {'params': [self._xyz], 'lr': training_args.position_lr_init * self.spatial_lr_scale, "name": "xyz"},
-            {'params': [self._features_dc], 'lr': training_args.feature_lr, "name": "f_dc"},
-            {'params': [self._features_rest], 'lr': training_args.feature_lr / 20.0, "name": "f_rest"},
-            {'params': [self._opacity], 'lr': training_args.opacity_lr, "name": "opacity"},
-            {'params': [self._scaling], 'lr': training_args.scaling_lr, "name": "scaling"},
-            {'params': [self._rotation], 'lr': training_args.rotation_lr, "name": "rotation"}
-        ]
-
+        if(apply_apperance_decouple):
+            l = [
+                {'params': [self._xyz], 'lr': training_args.position_lr_init * self.spatial_lr_scale, "name": "xyz"},
+                {'params': [self._features_dc], 'lr': training_args.feature_lr, "name": "f_dc"},
+                {'params': [self._features_rest], 'lr': training_args.feature_lr / 20.0, "name": "f_rest"},
+                {'params': [self._opacity], 'lr': training_args.opacity_lr, "name": "opacity"},
+                {'params': [self._scaling], 'lr': training_args.scaling_lr, "name": "scaling"},
+                {'params': [self._rotation], 'lr': training_args.rotation_lr, "name": "rotation"},
+                {'params': [self._appearance_embeddings], 'lr': training_args.appearance_embeddings_lr, "name": "appearance_embeddings"},
+                {'params': self.appearance_network.parameters(), 'lr': training_args.appearance_network_lr, "name": "appearance_network"}
+            ]
+        else:
+            l = [
+                {'params': [self._xyz], 'lr': training_args.position_lr_init * self.spatial_lr_scale, "name": "xyz"},
+                {'params': [self._features_dc], 'lr': training_args.feature_lr, "name": "f_dc"},
+                {'params': [self._features_rest], 'lr': training_args.feature_lr / 20.0, "name": "f_rest"},
+                {'params': [self._opacity], 'lr': training_args.opacity_lr, "name": "opacity"},
+                {'params': [self._scaling], 'lr': training_args.scaling_lr, "name": "scaling"},
+                {'params': [self._rotation], 'lr': training_args.rotation_lr, "name": "rotation"}
+            ]
+        
         self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
         self.xyz_scheduler_args = get_expon_lr_func(lr_init=training_args.position_lr_init*self.spatial_lr_scale,
                                                     lr_final=training_args.position_lr_final*self.spatial_lr_scale,

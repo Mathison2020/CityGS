@@ -52,6 +52,7 @@ class ModelParams(ParamGroup):
         self._images = "images"
         self._transient = "masks"
         self.apply_mask = False
+        self.apply_apperance_decouple = False
         self._resolution = -1
         self._white_background = False
         self.data_device = "cuda"
@@ -88,6 +89,11 @@ class OptimizationParams(ParamGroup):
         self.densify_from_iter = 500
         self.densify_until_iter = 15_000
         self.densify_grad_threshold = 0.0002
+
+        # Appearance Decouple
+        self.appearance_embeddings_lr = 0.001  # AE的学习率
+        self.appearance_network_lr = 0.001     # 外观解耦网络的学习率
+
         super().__init__(parser, "Optimization Parameters")
 
 def get_combined_args(parser : ArgumentParser):
