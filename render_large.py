@@ -43,7 +43,7 @@ def render_set(model_path, name, iteration, gs_dataset, gaussians, pipeline, bac
     makedirs(gts_path, exist_ok=True)
 
     data_loader = DataLoader(gs_dataset, batch_size=1, shuffle=False, num_workers=0)
-    for idx, (cam_info, gt_image) in enumerate(tqdm(data_loader, desc="Rendering progress")):   
+    for idx, (cam_info, gt_image, masks) in enumerate(tqdm(data_loader, desc="Rendering progress")):   
         torch.cuda.reset_peak_memory_stats()
         torch.cuda.synchronize()
         start = time.time()
