@@ -16,7 +16,7 @@ from utils.graphics_utils import getWorld2View2, getProjectionMatrix
 
 class Camera(nn.Module):
     def __init__(self, colmap_id, R, T, FoVx, FoVy, image, depth, gt_alpha_mask,
-                 image_name, uid, mask, apply_mask,
+                 image_name, uid, mask, apply_mask, objects=None,
                  trans=np.array([0.0, 0.0, 0.0]), scale=1.0, data_device = "cuda"
                  ):
         super(Camera, self).__init__()
@@ -36,20 +36,23 @@ class Camera(nn.Module):
             print(f"[Warning] Custom device {data_device} failed, fallback to default cuda device" )
             self.data_device = torch.device("cuda")
 
-        self.original_image = image.clamp(0.0, 1.0).to(self.data_device)
+        self.original_image = image.clamp(0.0, 1.0)
         if depth is not None:
-            self.original_depth = depth.clamp(0.0, 1.0).to(self.data_device)
+            self.original_depth = depth.clamp(0.0, 1.0)
         self.image_width = self.original_image.shape[2]
         self.image_height = self.original_image.shape[1]
-
+        
+        self.objects = None
+        if objects is not None:
+            self.objects = torch.from_numpy(objects).float()
 
         if gt_alpha_mask is not None:
-            gt_alpha_mask = gt_alpha_mask.to(self.data_device)
+            gt_alpha_mask = gt_alpha_mask
             self.original_image *= gt_alpha_mask
             if depth is not None:
                 self.original_depth *= gt_alpha_mask
         else:
-            alpha_mask = torch.ones((1, self.image_height, self.image_width), device=self.data_device)
+            alpha_mask = torch.ones((1, self.image_height, self.image_width))
             self.original_image *= alpha_mask
             if depth is not None:
                 self.original_depth *= alpha_mask

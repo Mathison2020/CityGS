@@ -17,7 +17,7 @@ from scene.colmap_loader import read_extrinsics_text, read_intrinsics_text, qvec
     read_extrinsics_binary, read_intrinsics_binary, read_points3D_binary, read_points3D_text
 from utils.graphics_utils import getWorld2View2, focal2fov, fov2focal
 import numpy as np
-import json
+import json, cv2
 from pathlib import Path
 from plyfile import PlyData, PlyElement
 from utils.sh_utils import SH2RGB
@@ -30,6 +30,7 @@ class CameraInfo(NamedTuple):
     FovY: np.array
     FovX: np.array
     image: np.array
+    objects: np.array
     depth: Optional[np.array]
     image_path: str
     image_name: str
@@ -68,7 +69,7 @@ def getNerfppNorm(cam_info):
 
     return {"translate": translate, "radius": radius}
 
-def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder, masks_folder, apply_mask):
+def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder, masks_folder, objects_folder, apply_mask):
     cam_infos = []
     for idx, key in enumerate(cam_extrinsics):
         sys.stdout.write('\r')
@@ -111,6 +112,12 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder, masks_folde
 
         mask_path = os.path.join(masks_folder, os.path.basename(extr.name))
         mask_path = mask_path.replace('JPG', 'png')
+        
+        objects = None
+        object_acc_path = os.path.join(objects_folder, image_name + '.npz')
+        if os.path.exists(object_acc_path):
+            sam = np.load(object_acc_path, allow_pickle=True)  #sam['indices']: (1036, 1556)  
+            objects = cv2.resize(sam['indices'], (image.size[0], image.size[1]), interpolation=cv2.INTER_NEAREST)   # 519, 779 - image.size[0], image.size[1]=779, 519           
 
         #if os.path.exists(mask_path):
         #    mask = cv2.imread(mask_path) / 255.
@@ -119,7 +126,7 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder, masks_folde
         #    mask = np.ones_like(image)
 
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image, depth=depth, mask_path=mask_path, apply_mask=apply_mask,
-                              image_path=image_path, image_name=image_name, width=width, height=height)
+                              objects=objects, image_path=image_path, image_name=image_name, width=width, height=height)
         cam_infos.append(cam_info)
 
     sys.stdout.write('\n')
@@ -164,10 +171,12 @@ def readColmapSceneInfo(path, images, masks, apply_mask, eval, llffhold=8, parti
 
     reading_dir = "images" if images == None else images
     reading_mask_dir = "masks" if masks == None else masks
+    reading_objects_dir = "sam"
     cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, 
                                            cam_intrinsics=cam_intrinsics, 
                                            images_folder=os.path.join(path, reading_dir),
                                            masks_folder=os.path.join(path, reading_mask_dir),
+                                           objects_folder=os.path.join(path, reading_objects_dir),
                                            apply_mask=apply_mask)
     
     cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)

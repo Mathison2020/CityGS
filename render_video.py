@@ -113,7 +113,6 @@ def render_video(dataset: ModelParams, iteration: int, pipeline: PipelineParams)
         render_video_out.close()
 
         
-
 if __name__ == "__main__":
     # Set up command line argument parser
     parser = ArgumentParser(description="Testing script parameters")

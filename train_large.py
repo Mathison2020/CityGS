@@ -22,6 +22,7 @@ from lightning.pytorch.loggers import (
     TensorBoardLogger,
     WandbLogger,
 )
+import torch.nn.functional as F
 from scene import LargeScene
 from scene.datasets import GSDataset, CacheDataLoader
 from utils.camera_utils import loadCam
@@ -48,10 +49,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, refilter
     gs_dataset = GSDataset(scene.getTrainCameras(), scene, dataset, pipe)
     if len(gs_dataset) > 0:
         data_loader = CacheDataLoader(gs_dataset, max_cache_num=1024, seed=42, batch_size=1, shuffle=True, num_workers=8)
-    gaussians.training_setup(opt,apply_apperance_decouple)
+    
     if checkpoint:
-        (model_params, first_iter) = torch.load(checkpoint)
-        gaussians.restore(model_params, opt, apply_apperance_decouple)
+        print("Create Gaussians from checkpoint {}".format(checkpoint))
+        gaussians.load_ply(os.path.join(checkpoint, 'point_cloud', f"iteration_{opt.iterations}" "point_cloud.ply"))
+    gaussians.training_setup(opt, apply_apperance_decouple, args)
 
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
@@ -75,25 +77,20 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, refilter
             break    
         
         for dataset_index, data in enumerate(data_loader):
-            if len(data) == 3:
-                cam_info, gt_image, mask = data
+            if args.type == '3dgs':
+                if len(data) == 4:
+                    cam_info, gt_image, mask, gt_obj = data
+                else:
+                    cam_info, gt_image, mask, gt_obj, gt_depth = data  
             else:
-                cam_info, gt_image, mask, gt_depth = data  
-            if network_gui.conn == None:
-                network_gui.try_connect()
-            while network_gui.conn != None:
-                try:
-                    net_image_bytes = None
-                    custom_cam, do_training, pipe.convert_SHs_python, pipe.compute_cov3D_python, keep_alive, scaling_modifer = network_gui.receive()
-                    if custom_cam != None:
-                        net_image = render(custom_cam, gaussians, pipe, background, scaling_modifer)["render"]
-                        net_image_bytes = memoryview((torch.clamp(net_image, min=0, max=1.0) * 255).byte().permute(1, 2, 0).contiguous().cpu().numpy())
-                    network_gui.send(net_image_bytes, dataset.source_path)
-                    if do_training and ((iteration < int(opt.iterations)) or not keep_alive):
+                while True:
+                    if len(data) == 4:
+                        cam_info, gt_image, mask, gt_obj = data
+                    else:
+                        cam_info, gt_image, mask, gt_obj, gt_depth = data  
+                    if gt_obj is not None:
                         break
-                except Exception as e:
-                    network_gui.conn = None
-
+            
             iter_start.record()
 
             gaussians.update_learning_rate(iteration)
@@ -107,53 +104,69 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, refilter
             if (iteration - 1) == debug_from:
                 pipe.debug = True
             render_pkg = render_large(cam_info, gaussians, pipe, background)
-            image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
-            depth = render_pkg["depth"]
-            end = time.time()
-            ema_time_render = 0.4 * (end - start) + 0.6 * ema_time_render
+            
+            if args.type == '3dgs':
+                image = render_pkg["render"]
+                viewspace_point_tensor = render_pkg["viewspace_points"]
+                visibility_filter = render_pkg["visibility_filter"]
+                radii = render_pkg["radii"]
+                depth = render_pkg["depth"]
+                end = time.time()
+                ema_time_render = 0.4 * (end - start) + 0.6 * ema_time_render
 
-            # decouple appearance model
-            if(apply_apperance_decouple):
-                decouple_image, transformation_map = decouple_appearance(image, gaussians, cam_info['uid'])
-                # Loss
-                if apply_mask:
-                    start = time.time()
-                    gt_image = gt_image.cuda()
-                    mask = abs(1 - mask.cuda())      
-                    Ll1 = l1_loss(decouple_image*mask, gt_image*mask)
-                    loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image*mask, gt_image*mask))
+                # decouple appearance model
+                if(apply_apperance_decouple):
+                    decouple_image, transformation_map = decouple_appearance(image, gaussians, cam_info['uid'])
+                    # Loss
+                    if apply_mask:
+                        start = time.time()
+                        gt_image = gt_image.cuda()
+                        mask = abs(1 - mask.cuda())      
+                        Ll1 = l1_loss(decouple_image*mask, gt_image*mask)
+                        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image*mask, gt_image*mask))
+                    else:
+                        start = time.time()
+                        gt_image = gt_image.cuda()   
+                        Ll1 = l1_loss(decouple_image, gt_image)
+                        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
                 else:
-                    start = time.time()
-                    gt_image = gt_image.cuda()   
-                    Ll1 = l1_loss(decouple_image, gt_image)
-                    loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
-            else:
-                # Loss
-                if apply_mask:
-                    start = time.time()
-                    gt_image = gt_image.cuda()
-                    mask = abs(1 - mask.cuda())      
-                    Ll1 = l1_loss(image*mask, gt_image*mask)
-                    loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image*mask, gt_image*mask))
-                else:
-                    start = time.time()
-                    gt_image = gt_image.cuda()   
-                    Ll1 = l1_loss(image, gt_image)
-                    loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
+                    # Loss
+                    if apply_mask:
+                        start = time.time()
+                        gt_image = gt_image.cuda()
+                        mask = abs(1 - mask.cuda())      
+                        Ll1 = l1_loss(image*mask, gt_image*mask)
+                        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image*mask, gt_image*mask))
+                    else:
+                        start = time.time()
+                        gt_image = gt_image.cuda()   
+                        Ll1 = l1_loss(image, gt_image)
+                        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
 
-            # depth_loss
-            if use_depth_loss:     
-                gt_depth = gt_depth.cuda()
-                rendered_depth = render_pkg["depth"][0]
-                rendered_depth = rendered_depth.reshape(-1, 1)
-                gt_depth = gt_depth.reshape(-1, 1)
+                # depth_loss
+                if use_depth_loss:     
+                    gt_depth = gt_depth.cuda()
+                    rendered_depth = render_pkg["depth"][0]
+                    rendered_depth = rendered_depth.reshape(-1, 1)
+                    gt_depth = gt_depth.reshape(-1, 1)
 
-                depth_loss = min(
-                    (1 - pearson_corrcoef( - gt_depth, rendered_depth)),
-                    (1 - pearson_corrcoef(1 / (gt_depth + 200.), rendered_depth))
-                )
-                loss += opt.lambda_depth * depth_loss
+                    depth_loss = min(
+                        (1 - pearson_corrcoef( - gt_depth, rendered_depth)),
+                        (1 - pearson_corrcoef(1 / (gt_depth + 200.), rendered_depth))
+                    )
+                    loss += opt.lambda_depth * depth_loss
 
+            elif args.type == 'seg':
+                objects = render_pkg["render_object"]
+                gt_obj_onehot = F.one_hot(gt_obj).permute(2,0,1)    # (C,H,W)
+                objects_logit = torch.softmax(objects, dim=0)       # (C,H,W)
+                if gt_obj_onehot.shape[0] != objects_logit.shape[0]:
+                    margin = objects_logit[:objects_logit.shape[0] - gt_obj_onehot.shape[0]].detach()
+                    gt_obj_onehot = torch.cat([gt_obj_onehot, margin], 0)
+                loss_sem = F.mse_loss(gt_obj_onehot*mask, objects_logit*mask)
+                loss_norm = 100 * ((torch.norm(gaussians._objects_dc, dim=-1, keepdim=True) - 1.0) ** 2).mean()
+                loss = loss_sem + loss_norm
+            
             loss.backward()
             end = time.time()
             ema_time_loss = 0.4 * (end - start) + 0.6 * ema_time_loss
@@ -208,7 +221,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, refilter
                     gs_dataset = GSDataset(scene.getTrainCameras(), scene, dataset, pipe)
 
                 # Densification
-                if iteration < opt.densify_until_iter:
+                if iteration < opt.densify_until_iter and args.type == '3dgs':
                     # Keep track of max radii in image-space for pruning
                     gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
                     gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
@@ -344,6 +357,7 @@ if __name__ == "__main__":
     parser.add_argument('--ip', type=str, default="127.0.0.1")
     parser.add_argument('--port', type=int, default=6009)
     parser.add_argument('--debug_from', type=int, default=-1)
+    parser.add_argument('--type', type=str, default='3dgs', choices=['seg', '3dgs'])
     parser.add_argument('--block_id', type=int, default=-1)
     parser.add_argument('--detect_anomaly', action='store_true', default=False)
     parser.add_argument("--test_iterations", nargs="+", type=int, default=[16_000, 30_000])
@@ -351,7 +365,7 @@ if __name__ == "__main__":
     parser.add_argument("--refilter_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
-    parser.add_argument("--start_checkpoint", type=str, default = None)
+    parser.add_argument("--checkpoint", type=str, default="")
     parser.add_argument("--use_depth_loss", action="store_true")
     args = parser.parse_args(sys.argv[1:])
     with open(args.config) as f:
@@ -367,7 +381,7 @@ if __name__ == "__main__":
     # Start GUI server, configure and run training
     network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
-    training(lp, op, pp, args.test_iterations, args.save_iterations, args.refilter_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args.use_depth_loss)
+    training(lp, op, pp, args.test_iterations, args.save_iterations, args.refilter_iterations, args.checkpoint_iterations, args.checkpoint, args.debug_from, args.use_depth_loss)
 
     # All done
     print("\nTraining complete.")

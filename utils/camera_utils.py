@@ -16,6 +16,7 @@ from utils.graphics_utils import fov2focal
 from transforms3d.euler import euler2mat, mat2euler
 from PIL import Image
 import torch
+from tqdm import tqdm
 
 WARNED = False
 
@@ -66,8 +67,10 @@ def loadCam(args, id, cam_info, resolution_scale):
             gt_mask = torch.ones(3, *resolution, dtype=torch.float32)
     else:
         gt_mask = None
+        
+    objects = cam_info.objects
 
-    return Camera(colmap_id=cam_info.uid, R=cam_info.R, T=cam_info.T, 
+    return Camera(colmap_id=cam_info.uid, R=cam_info.R, T=cam_info.T, objects=objects,
                   FoVx=cam_info.FovX, FoVy=cam_info.FovY, mask=gt_mask, apply_mask=cam_info.apply_mask,
                   image=gt_image, depth=gt_depth, gt_alpha_mask=loaded_mask,
                   image_name=cam_info.image_name, uid=id, data_device=args.data_device)
@@ -101,7 +104,7 @@ def loadCam_woImage(args, id, cam_info, resolution_scale):
 def cameraList_from_camInfos(cam_infos, resolution_scale, args):
     camera_list = []
 
-    for id, c in enumerate(cam_infos):
+    for id, c in tqdm(enumerate(cam_infos)):
         camera_list.append(loadCam(args, id, c, resolution_scale)) # loadCam
 
     return camera_list

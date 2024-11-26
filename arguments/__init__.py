@@ -51,6 +51,7 @@ class ModelParams(ParamGroup):
         self._model_path = ""
         self._images = "images"
         self._transient = "masks"
+        self._object_path = "sam"
         self.apply_mask = False
         self.apply_apperance_decouple = False
         self._resolution = -1

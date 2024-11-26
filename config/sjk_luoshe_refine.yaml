@@ -5,7 +5,7 @@ model_params: {
         kwargs: {}
     },
     sh_degree: 3,
-    source_path: "data/luoshedaqiao_forward",  # adjust it to your own dataset
+    source_path: "data/luoshedaqiao_overlook",  # adjust it to your own dataset
     partition_name: "sjk_luoshe_refine",  # adjust it to the name you want
     pretrain_path: "output/sjk_luoshe_coarse/point_cloud/iteration_30000",  # adjust it to the output path of your coarse model
     model_path: "",  # leave it blank

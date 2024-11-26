@@ -5,7 +5,7 @@ model_params: {
         kwargs: {}
     },
     sh_degree: 3,
-    source_path: "data/luoshedaqiao_forward",  # adjust it to your own dataset
+    source_path: "data/luoshedaqiao_overlook",  # adjust it to your own dataset
     model_path: "",  # leave it blank
     images: "images",
     transient: "masks", # Directory name of masks
@@ -46,6 +46,7 @@ optim_params: {
     densify_grad_threshold: 0.0002,
     # Appearance Decouple
     appearance_embeddings_lr: 0.001,  # AE的学习率
+    appearance_network_lr: 0.001,     # 外观解耦网络的学习率
     appearance_network_lr: 0.001,     # 外观解耦网络的学习率
 }
 
